@@ -1,0 +1,373 @@
+# Copyright (c) 2020 Hiroshi Tanaka, hirtanak@gmail.com @hirtanak
+# Licensed under the MIT License.
+################################
+## Cluster Configuration File ##
+################################
+
+[cluster genomicswfe]
+FormLayout = selectionpanel
+Category = Applications
+IconUrl = https://raw.githubusercontent.com/hirtanak/scripts/master/cromwelllogo2.png
+
+#Autoscale = $Autoscale
+
+    [[node defaults]]
+    UsePublicNetwork = $UsePublicNetwork
+    Credentials = $Credentials    
+    ImageName = $ImageName
+    SubnetId = $SubnetId
+    Region = $Region
+    KeyPairLocation = ~/.ssh/cyclecloud.pem
+#    KeyPairLocation = ~/examples/id_rsaccuser
+
+        [[[cluster-init genomicswfe:default:1.0.0]]]
+       Optional = True
+
+        [[[configuration]]]
+        MOUNTPOINT1 = $configuration_MountPoint1
+        MOUNTPOINT1_KEY = $configuration_MountPoint1_Key
+        singularity.version = $SingularityVersion
+        cromwell.version = $CromwellVersion
+	app.installation.type = $AppInstallationType
+	BWA_VERSION = $BWA_VERSION
+	SAMTOOLS_VERSION = $SAMTOOLS_VERSION
+	HTSLIB_VERSION = $HTSLIB_VERSION
+	GATK_VERSION = $GATK_VERSION
+	SPARK_VERSION = $SPARK_VERSION
+	FASTQC_VERSION = $FASTQC_VERSION
+
+    [[node master]]
+    MachineType = $MasterMachineType
+    IsReturnProxy = $ReturnProxy
+    AdditionalClusterInitSpecs = $MasterClusterInitSpecs
+    ImageName = $ImageName
+
+        [[[configuration]]]
+
+        [[[cluster-init genomicswfe:master:1.0.0]]]
+
+        [[[network-interface eth0]]]
+        AssociatePublicIpAddress = $UsePublicNetwork
+	StaticPublicIpAddress = true
+
+        [[[input-endpoint ganglia]]]
+        PrivatePort = 8652
+        PublicPort = 8652
+
+        # Add 2 premium disks in a RAID 0 configuration to the NFS export
+        [[[volume nfs-1]]]
+        Size = 1024
+        SSD = True
+        Mount = nfs
+        Persistent = true
+
+        [[[volume nfs-2]]]
+        Size = 1024
+        SSD = True
+        Mount = nfs
+        Persistent = true
+
+        [[[configuration cyclecloud.exports.nfs_data]]]
+        type = nfs
+        export_path = /mnt/exports/apps
+
+        [[[configuration cyclecloud.mounts.nfs]]]
+        mountpoint = /mnt/exports/apps
+        fs_type = ext4
+        raid_level = 0
+
+    [[nodearray hpc]]
+    MachineType = $ExecuteMachineType
+    MaxCoreCount = $MaxExecuteCoreCount
+    Interruptible = $UseLowPrio
+    AdditionalClusterInitSpecs = $ExecuteClusterInitSpecs
+    InstallJetpack = true
+    JetpackPlatform = centos-7
+    ImageName = $ImageNameExecute
+    Azure.SingleScaleset = true
+
+        [[[configuration]]]
+        slurm.autoscale = true
+        slurm.default_partition = true
+        slurm.hpc = true
+
+        [[[cluster-init genomicswfe:execute:1.0.0]]]
+
+        [[[network-interface eth0]]]
+        AssociatePublicIpAddress = $ExecuteNodesPublic
+
+        [[[configuration cyclecloud.mounts.nfs_data]]]
+        type = nfs
+        mountpoint = /mnt/exports/apps
+        export_path = /mnt/exports/apps
+
+[parameters Required Settings]
+Order = 1
+
+    [[parameters About Slurm]]
+    Order = 10
+
+        [[[parameter slurm]]]
+        Order = 5
+        HideLabel = true
+        Config.Plugin = pico.widget.HtmlTemplateWidget
+        Config.Template := "<table><tr><td><img src='static/cloud/cluster/ui/ClusterIcon/slurm.png' width='40' height='40'></td></tr><tr><td><p>Slurm is a highly configurable open source workload manager. See the <a href=\"https://www.schedmd.com/\" target=\"_blank\">Slurm project site</a> for an overview.</p><p>Follow the instructions in the <a href=\"https://github.com/azure/cyclecloud-slurm/\" target=\"_blank\">README</a> for details on instructions on extending and configuring the Project for your environment.</p></td></tr></table>"
+
+        [[[parameter Singularity]]]
+        Order = 6
+        HideLabel = true
+        Config.Plugin = pico.widget.HtmlTemplateWidget
+        Config.Template := "<table><tr><td><img src='https://github.com/CycleCloudCommunity/singularity/raw/master/icon.png' width='40' height='40'></td></tr><tr><td><p>Singularity is a system for building and running Linux Containers. See the <a href=\"https://singularity.lbl.gov/\" target=\"_blank\">Singularity project site</a> for an overview.</p></td></tr></table>"
+
+    [[parameters Virtual Machines ]]
+    Description = "The cluster, in this case, has two roles: the scheduler master-node with shared filer and the execute hosts. Configure which VM types to use based on the requirements of your application."
+    Order = 20
+
+        [[[parameter Region]]]
+        Label = Region
+        Description = Deployment Location
+        ParameterType = Cloud.Region
+        DefaultValue = southcentralus
+
+        [[[parameter MasterMachineType]]]
+        Label = Master VM Type
+        Description = The VM type for scheduler master and shared filer.
+        ParameterType = Cloud.MachineType
+        DefaultValue = Standard_DS3_v2
+
+        [[[parameter ExecuteMachineType]]]
+        Label = Execute VM Type
+        Description = The VM type for execute nodes
+        ParameterType = Cloud.MachineType
+        DefaultValue = Standard_HC44rs
+        Config.Multiselect = true
+
+    [[parameters Auto-Scaling]]
+    Description = "The cluster can autoscale to the workload, adding execute hosts as jobs are queued. To enable this check the box below and choose the initial and maximum core counts for the cluster"
+    Order = 30
+
+        [[[parameter Autoscale]]]
+        Label = Autoscale
+        DefaultValue = true
+        Widget.Plugin = pico.form.BooleanCheckBox
+        Widget.Label = Start and stop execute instances automatically
+
+        [[[parameter MaxExecuteCoreCount]]]
+        Label = Max Cores
+        Description = The total number of execute cores to start
+        DefaultValue = 88
+        Config.Plugin = pico.form.NumberTextBox
+        Config.MinValue = 0
+        Config.IntegerOnly = true
+
+        [[[parameter UseLowPrio]]]
+        Label = Low Priority
+        DefaultValue = true
+        Widget.Plugin = pico.form.BooleanCheckBox
+        Widget.Label = Use low priority instances for execute hosts
+
+    [[parameters Networking]]
+    Order = 40
+
+        [[[parameter SubnetId]]]
+        Label = Subnet ID
+        Description = Subnet Resource Path (ResourceGroup/VirtualNetwork/Subnet)
+        ParameterType = Azure.Subnet
+        Required = True
+
+
+[parameters Intra Settings]
+Order = 10
+
+    [[parameters Azure Settings]]
+    Order = 3 
+
+        [[[parameter Credentials]]]
+        Description = The credentials for the cloud provider
+        ParameterType = Cloud.Credentials
+
+    [[parameters Mount Point Settings]]
+    Description = Mount Point Settings. <Server>:/<MountPoint1>. ex. 10.0.4.250:/vol01
+    Order = 24
+
+        [[[parameter configuration_MountPoint1]]]
+        Label = MountPoint1
+        Config.Label = MountPoint1
+
+        [[[parameter configuration_MountPoint1_Key]]]
+        Label = MountPoint1 Key
+        DefaultValue = key1
+        Config.Label = MountPoint1 Key
+
+    [[parameters Slurm Settings ]]
+    Description = "Section for configuring Slurm"
+    Order = 5
+
+        [[[parameter configuration_slurm_version]]]
+        Required = True
+        Label = Slurm Version
+        Description = Version of Slurm to install on the cluster
+        ParameterType = StringList
+        Config.Plugin = pico.form.Dropdown
+        Config.FreeForm = true
+        Config.Entries := {[Value="19.05.5-1"], [Value="18.08.9-1"]}
+        DefaultValue = 19.05.5-1
+
+        [[[parameter configuration_slurm_shutdown_policy]]]
+        Label = ShutdownPolicy
+        description = By default, autostop will Delete stopped VMS for lowest cost.  Optionally, Stop/Deallocate the VMs for faster restart instead.
+        DefaultValue = Terminate
+        config.plugin = pico.control.AutoCompleteDropdown
+            [[[[list Config.Entries]]]]
+            Name = Terminate
+            Label = Terminate
+            [[[[list Config.Entries]]]]
+            Name = Deallocate
+            Label = Deallocate
+
+    [[parameters Singularity Setting ]]
+    Description = "Section for configuring Singularity versions etc"
+    Order = 6
+
+        [[[parameter SingularityVersion]]]
+        Label = Singularity Version
+        Description = Singularity version to use
+        DefaultValue = 3.5.3
+        config.plugin = pico.control.AutoCompleteDropdown
+            [[[[list Config.Entries]]]]
+            Name = 3.5.3
+            Label = 3.5.3
+
+    [[parameters Cromwell Setting ]]
+    Description = "Section for configuring Cromwell versions"
+    Order = 7
+
+        [[[parameter CromwellVersion]]]
+        Label = Cromwell Version
+        Description = Cromwell version to use
+        DefaultValue = 51
+        config.plugin = pico.control.AutoCompleteDropdown
+            [[[[list Config.Entries]]]]
+            Name = 51
+            Label = 51
+
+    [[parameters SW installation Setting ]]
+    Description = "Section for configuring SW installation type"
+    Order = 8
+
+        [[[parameter AppInstallationType]]]
+        Label = SW installation type
+        Description = Compile / Docker / Singularity
+        DefaultValue = Compile
+        Config.Filter := Package in {"Compile", "Docker", "Singularity"}
+        config.plugin = pico.control.AutoCompleteDropdown
+            [[[[list Config.Entries]]]]
+            Name = Compile
+            Label = Compile
+            [[[[list Config.Entries]]]]
+            Name = Docker
+            Label = Docker
+            [[[[list Config.Entries]]]]
+            Name = Singularity
+            Label = Singularity
+
+    [[parameters Software]]
+    Description = "Specify the scheduling software, and base OS installed on all nodes, and optionally the cluster-init and chef versions from your Locker."
+    Order = 10
+
+        [[[parameter ImageName]]]
+        Label = Base OS
+        ParameterType = Cloud.Image
+        Config.OS = linux
+        DefaultValue = OpenLogic:CentOS-HPC:7.6:latest
+        Config.Filter := Package in {"OpenLogic:CentOS-HPC:7.6:latest", "cycle.image.ubuntu18"}
+
+        [[[parameter MasterClusterInitSpecs]]]
+        Label = Master Cluster-Init
+        DefaultValue = =undefined
+        Description = Cluster init specs to apply to the master node
+        ParameterType = Cloud.ClusterInitSpecs
+    
+        [[[parameter ImageNameExecute]]]
+        Label = Compile Node OS
+        ParameterType = Cloud.Image
+        Config.OS = linux
+        DefaultValue = OpenLogic:CentOS-HPC:7.6:latest
+        Config.Filter := Package in {"OpenLogic:CentOS-HPC:7.6:latest", "cycle.image.ubuntu18"}
+
+        [[[parameter ExecuteClusterInitSpecs]]]
+        Label = Execute Cluster-Init
+        DefaultValue = =undefined
+        Description = Cluster init specs to apply to execute nodes
+        ParameterType = Cloud.ClusterInitSpecs
+
+    [[parameters Advanced Networking]]
+    Description = Advanced networking settings
+
+        [[[parameter ReturnProxy]]]
+        Label = Return Proxy
+        DefaultValue = true
+        ParameterType = Boolean
+        Config.Label = Use SSH tunnel to connect to CycleCloud (required if direct access is blocked)
+
+        [[[parameter UsePublicNetwork]]]
+        Label = Public Head Node
+        DefaultValue = true
+        ParameterType = Boolean
+        Config.Label = Access master node from the Internet
+
+        [[[parameter ExecuteNodesPublic]]]
+        Label = Public Execute
+        DefaultValue = false
+        ParameterType = Boolean
+        Config.Label = Access execute nodes from the Internet
+        Conditions.Excluded := UsePublicNetwork isnt true
+
+[parameters Application Settings]
+Order = 20
+
+    [[parameters Detail Software Setting]]
+    Description = Detail Software settings
+
+        [[[parameter BWA_VERSION]]]
+        Label = BWA Version
+        DefaultValue = 0.7.17
+
+        [[[parameter SAMTOOLS_VERSION]]]
+        Label = SAMTOOLS Version
+        DefaultValue = "1.10"
+        config.plugin = pico.control.AutoCompleteDropdown
+            [[[[list Config.Entries]]]]
+            Name = "1.10"
+            Label = "1.10"
+
+        [[[parameter HTSLIB_VERSION]]]
+        Label = HTSLIB Version
+        DefaultValue = 1.10.2
+        config.plugin = pico.control.AutoCompleteDropdown
+            [[[[list Config.Entries]]]]
+            Name = "1.10.2"
+            Label = "1.10.2"
+
+        [[[parameter GATK_VERSION]]]
+        Label = GATK Version
+        DefaultValue = 4.1.7.0
+        config.plugin = pico.control.AutoCompleteDropdown
+            [[[[list Config.Entries]]]]
+            Name = 4.1.7.0
+            Label = 4.1.7.0
+
+	[[[parameter SPARK_VERSION]]]
+        Label = Spark Version
+        DefaultValue = 3.0.0-preview2
+        config.plugin = pico.control.AutoCompleteDropdown
+            [[[[list Config.Entries]]]]
+            Name = 2.4.4
+            Label = 2.4.4
+            [[[[list Config.Entries]]]]
+            Name = 3.0.0-preview2
+            Label = 3.0.0-preview2
+
+        [[[parameter FASTQC_VERSION]]]
+        Label = FastQC Version
+        DefaultValue = 0.11.9
